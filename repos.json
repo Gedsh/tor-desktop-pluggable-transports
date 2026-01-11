@@ -1,0 +1,21 @@
+[
+  {
+    "name": "lyrebird",
+    "url": "https://gitlab.torproject.org/Gedsh/lyrebird.git",
+    "branch": "prod",
+    "main": "cmd/lyrebird"
+  },
+  {
+    "name": "snowflake",
+    "url": "https://gitlab.torproject.org/Gedsh/snowflake.git",
+    "branch": "feat/check-dns-ip",
+    "main": "client"
+  },
+  {
+    "name": "conjure",
+    "url": "https://gitlab.torproject.org/Gedsh/conjure.git",
+    "branch": "prod",
+    "main": "client"
+  }
+]
+

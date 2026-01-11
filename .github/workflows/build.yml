@@ -1,0 +1,56 @@
+name: Central Go Builder
+
+on:
+  push:
+    paths:
+      - "version.txt"
+      - "repos.json"
+      - "scripts/build.sh"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.24.5'
+          cache: true
+
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y jq libczmq-dev
+
+      - name: Download previous binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: cache
+        continue-on-error: true
+
+      - name: Download build state
+        uses: actions/download-artifact@v4
+        with:
+          name: build-state
+          path: state
+        continue-on-error: true
+
+      - name: Run build script
+        run: ./scripts/build.sh
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: dist/
+          retention-days: 30
+
+      - name: Save build state
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-state
+          path: state/
+          retention-days: 30
+
