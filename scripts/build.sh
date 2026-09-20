@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -e
 
-VERSION=$(cat version.txt)
 REPO_ROOT=$(pwd)
 STATE="$REPO_ROOT/state"
 STATE_FILE="$STATE/builded.json"
@@ -82,4 +81,3 @@ jq -c '.[]' repos.json | while read -r row; do
     '.[$n]=$c' "$STATE_FILE" > tmp && mv tmp "$STATE_FILE"
 
 done
-
