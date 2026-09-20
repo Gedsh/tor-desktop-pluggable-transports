@@ -2,15 +2,15 @@ name: Central Go Builder
 
 on:
   push:
-    paths:
-      - "version.txt"
-      - "repos.json"
-      - "scripts/build.sh"
-  workflow_dispatch:
+    tags:
+      - "**"
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
 
     steps:
       - uses: actions/checkout@v4
@@ -23,19 +23,68 @@ jobs:
       - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y jq libczmq-dev
 
+      - name: Find previous build artifacts
+        id: previous
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          runs=$(gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml/runs" \
+            -f status=success -f per_page=100)
+          run_ids=$(jq -r --arg current "$GITHUB_RUN_ID" \
+            '.workflow_runs[] | select((.id | tostring) != $current) | .id' <<< "$runs")
+          for run_id in $run_ids; do
+            artifacts=$(gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100")
+            if jq -e '[.[].artifacts[] | select(.expired == false) | .name] |
+              (index("binaries") != null and index("build-state") != null)' \
+              <<< "$artifacts" > /dev/null; then
+              echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+              echo "Restoring artifacts from run $run_id"
+              exit 0
+            fi
+          done
+          echo "No reusable artifacts found in the latest 100 successful runs; rebuilding."
+
       - name: Download previous binaries
+        id: binaries
+        if: steps.previous.outputs.run_id != ''
         uses: actions/download-artifact@v4
         with:
           name: binaries
           path: cache
+          run-id: ${{ steps.previous.outputs.run_id }}
+          github-token: ${{ github.token }}
         continue-on-error: true
 
       - name: Download build state
+        id: build_state
+        if: steps.previous.outputs.run_id != ''
         uses: actions/download-artifact@v4
         with:
           name: build-state
           path: state
+          run-id: ${{ steps.previous.outputs.run_id }}
+          github-token: ${{ github.token }}
         continue-on-error: true
+
+      - name: Validate restored build inputs
+        env:
+          BINARIES_OUTCOME: ${{ steps.binaries.outcome }}
+          STATE_OUTCOME: ${{ steps.build_state.outcome }}
+        run: |
+          mkdir -p state
+          fingerprint=$(sha256sum scripts/build.sh repos.json .github/workflows/build.yml)
+          if [[ "$BINARIES_OUTCOME" != success || "$STATE_OUTCOME" != success ]]; then
+            printf '{}\n' > state/builded.json
+            echo "Artifact restoration incomplete; rebuilding all binaries."
+          elif [[ ! -f state/build-inputs.sha256 ]] || \
+            [[ "$fingerprint" != "$(cat state/build-inputs.sha256)" ]]; then
+            printf '{}\n' > state/builded.json
+            echo "Build inputs changed or fingerprint missing; rebuilding all binaries."
+          fi
+          printf '%s\n' "$fingerprint" > state/build-inputs.sha256
 
       - name: Run build script
         run: ./scripts/build.sh
@@ -53,4 +102,3 @@ jobs:
           name: build-state
           path: state/
           retention-days: 30
-
